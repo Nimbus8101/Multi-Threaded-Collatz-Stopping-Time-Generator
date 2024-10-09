@@ -5,22 +5,28 @@
 #include <cstring>
 #include <thread>
 #include <iomanip>
+#include <fstream>
 using namespace std;
 
-int N = 0;
+unsigned int N = 0;
 int T = 0;
 int counter = 0;
 mutex safe;
 bool locked = true;
 vector<int> histogram = vector<int>(10000, 0);
 
+ofstream histogramFile("histograms.csv");
+
 void createThread(int threadnum){
-    int variable;
+    unsigned int variable;
+    int subI = 0;
     while(counter < N){
         if(locked == true){
             safe.lock();
+                if(subI > 0){
+                    histogram.at(subI)++;
+                }
                 variable = counter + 1;
-                cout << ".";
                 counter++;
             safe.unlock();
             if(variable > N){ return; } //Prevents excess collatz sequences from being calculated
@@ -29,7 +35,7 @@ void createThread(int threadnum){
             counter++;
         }
 
-        int subI = 0;
+        subI = 0;
         while(true){
             if(variable == 1){
                 break;
@@ -45,11 +51,7 @@ void createThread(int threadnum){
             }
         }
 
-        if(locked == true){
-            safe.lock();
-                histogram.at(subI)++;
-            safe.unlock();
-        }else{
+        if(locked != true){
             histogram.at(subI)++;
         }
     }
@@ -76,15 +78,14 @@ string run_mt_collatz(int NVal, int TVal, bool lockedVal){
     //timer end
     auto end = chrono::high_resolution_clock::now();
 
-    //Reads the histogram
-    int totalThreadNumber = 0;
+    //Transfers the histogram info to the histogram file
     for(int j = 0; j < 1000; j++){
-        totalThreadNumber += histogram.at(j);
         if(histogram.at(j) != 0){
             cout << endl << histogram.at(j) << ", frequency_of_stopping_time(" << j << ")";
         }
     }
-    cout << endl;
+    histogramFile << "\n\n";
+
     chrono::duration<double> secs = (end -start);
 
     //cout << "Threads counted / threads wanted: " << totalThreadNumber << " / " << N << endl;
@@ -94,17 +95,22 @@ string run_mt_collatz(int NVal, int TVal, bool lockedVal){
     return to_string(N) + ", " + to_string(T) + ", " + to_string(secs.count()+1);
 };
 
-int main(int argc, char* argv[]){
-    bool locked;
 
-    if(argc >= 4 && strcmp(argv[3], "-nolock") == 0){
-        for(int j = 0; j < argc; j++){
-            cout << argv[j] << endl;
+int main(){
+    int N_VALUE = 20000000;
+    int MAX_T_VALUE = 8;
+    //Run the collatz experiment with T values 1-8 (N = 10000)
+
+    ofstream myFile("data.csv");
+
+    for(int i = 1; i <= MAX_T_VALUE; i++){
+        cout << "In loop" << endl;
+        for(int j = 0; j < 10; j++){
+            myFile << run_mt_collatz(N_VALUE, i, true) << "\n";
         }
-    locked = false;
     }
 
-    cout << run_mt_collatz(stoi(argv[1]), stoi(argv[2]), locked) << endl;
-
+    myFile.close();
+    
     return 0;
 }
