@@ -14,74 +14,91 @@ mutex safe;
 bool locked = true;
 vector<int> histogram(10000, 0);
 
+bool dataLocked = false;
+
+bool lock(mutex m){
+    m.lock();
+    dataLocked = true;
+
+    return true;
+}
+
 void createThread(int threadnum){
-int variable;
-while(counter <= N){
+    int variable;
+    while(counter < N){
+        if(locked == true){
+            safe.lock();
+                variable = counter + 1;
+                counter++;
+            //cout << "     Thread " << threadnum << " Unlocked shared variables (variable - counter): " << variable << " - " << counter << endl;
+            safe.unlock();
+            if(variable > N){ cout << variable << endl; return; } //Prevents excess collatz sequences from being calculated
+        }
+        else{
+            variable = counter + 1;
+            counter++;
+        }
 
-if(locked == true){
-    safe.lock();
-variable = counter + 1;
-counter++;
-safe.unlock();
-}
-else{
-variable = counter + 1;
-counter++;
-}
+        int subI = 0;
+        while(true){
+            if(variable == 1){
+                break;
+            }
 
-int subI = 0;
-while(true){
-if(variable == 1){
-break;
-}
+            if(variable % 2 == 0){
+                variable = variable / 2;
+                subI++;
+            }
+            else if(variable % 2 != 0){
+                variable = ((variable * 3) + 1);
+                subI++;
+            }
+        }
+        histogram.at(subI)++;
+    }
 
-if(variable % 2 == 0){
-variable = variable / 2;
-subI++;
-}
-else if(variable % 2 != 0){
-variable = ((variable * 3) + 1);
-subI++;
-}
-}
-
-histogram.at(subI)++;
-}
-
-return;
+    return;
 }
 
 int main(int argc, char* argv[]){
-    cout << argc << endl;
-if(argc >= 3 && strcmp(argv[3], "-nolock") == 0){
-    for(int j = 0; j < argc; j++){
-        cout << argv[j] << endl;
+    if(argc >= 4 && strcmp(argv[3], "-nolock") == 0){
+        for(int j = 0; j < argc; j++){
+            cout << argv[j] << endl;
+        }
+    locked = false;
     }
-locked = false;
-}
-N = stoi(argv[1]);
-T = stoi(argv[2]);
 
-auto start = chrono::high_resolution_clock::now();
+    //Sets the N and T values
+    N = stoi(argv[1]);
+    T = stoi(argv[2]);
 
-vector<thread> TH;
-for(int i = 0; i < T; i++){
-    TH.emplace_back(createThread, i);
-}
-for(auto& threads : TH){
-    threads.join();
-}
+    //Timer setup
+    auto start = chrono::high_resolution_clock::now();
 
-auto end = chrono::high_resolution_clock::now();
-for(int j = 0; j < 1000; j++){
-    if(histogram.at(j) != 0){
-        cout << endl << histogram.at(j) << "frequncy_of_stopping_time(" << j << ")";
+    //Thread setup, each one calculating a collatz sequence
+    vector<thread> TH;
+    for(int i = 0; i < T; i++){
+        TH.emplace_back(createThread, i);
     }
-}
-cout << endl;
+    for(auto& threads : TH){
+        threads.join();
+    }
+    
+    //timer end
+    auto end = chrono::high_resolution_clock::now();
 
-chrono::duration<double> secs = (end -start);
+    //Reads the histogram
+    int totalThreadNumber = 0;
+    for(int j = 0; j < 1000; j++){
+        totalThreadNumber += histogram.at(j);
+        if(histogram.at(j) != 0){
+            //cout << endl << histogram.at(j) << ", frequency_of_stopping_time(" << j << ")";
+        }
+    }
+    cout << endl;
 
-std::cerr << N << ", " << T << ", " << fixed << setprecision(9) << secs.count()+1 << endl;
-return 0;
+    chrono::duration<double> secs = (end -start);
+    cout << "Threads counted / threads wanted: " << totalThreadNumber << " / " << N << endl;
+    std::cerr << N << ", " << T << ", " << fixed << setprecision(9) << secs.count()+1 << endl;
+    return 0;
 }
