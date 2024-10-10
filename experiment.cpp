@@ -17,31 +17,30 @@ vector<int> histogram = vector<int>(10000, 0);
 
 ofstream histogramFile("histograms.csv");
 
-void createThread(int threadnum){
+void createLockingThread(int threadnum){
     unsigned int variable;
     int subI = 0;
     while(counter < N){
-        if(locked == true){
+        if(subI > 0){
             safe.lock();
-                if(subI > 0){
-                    histogram.at(subI)++;
-                }
+                histogram.at(subI)++;
                 variable = counter + 1;
                 counter++;
             safe.unlock();
-            if(variable > N){ return; } //Prevents excess collatz sequences from being calculated
         }else{
-            variable = counter + 1;
-            counter++;
+            safe.lock();
+                variable = counter + 1;
+                counter++;
+            safe.unlock();
         }
+        if(variable > N){ return; } //Prevents excess collatz sequences from being calculated
 
         subI = 0;
         while(true){
             if(variable == 1){
                 break;
             }
-
-            if(variable % 2 == 0){
+            else if(variable % 2 == 0){
                 variable = variable / 2;
                 subI++;
             }
@@ -50,33 +49,75 @@ void createThread(int threadnum){
                 subI++;
             }
         }
+    }
+    return;
+};
 
-        if(locked != true){
-            histogram.at(subI)++;
+void createNonlockingThread(int threadnum){
+    unsigned int variable;
+    while(counter < N){
+        variable = counter + 1;
+        counter++;
+
+        int subI = 0;
+        while(true){
+            if(variable == 1){
+                break;
+            }
+            else if(variable % 2 == 0){
+                variable = variable / 2;
+                subI++;
+            }
+            else if(variable % 2 != 0){
+                variable = ((variable * 3) + 1);
+                subI++;
+            }
         }
+        histogram.at(subI)++;
     }
     return;
 };
 
 string run_mt_collatz(int NVal, int TVal, bool lockedVal){
+    chrono::duration<double> secs;
     locked = lockedVal;
     N = NVal;
     T = TVal;
     
-    //Timer setup
-    auto start = chrono::high_resolution_clock::now();
+    if(lockedVal){
+        //Timer setup
+        auto start = chrono::high_resolution_clock::now();
 
-    //Thread setup, each one calculating a collatz sequence
-    vector<thread> TH;
-    for(int i = 0; i < T; i++){
-        TH.emplace_back(createThread, i);
-    }
-    for(auto& threads : TH){
-        threads.join();
+        //Thread setup, each one calculating a collatz sequence
+        vector<thread> TH;
+        for(int i = 0; i < T; i++){
+            TH.emplace_back(createLockingThread, i);
+        }
+        for(auto& threads : TH){
+            threads.join();
+        }
+        
+        //timer end
+        auto end = chrono::high_resolution_clock::now();
+        secs = (end -start);
+    }else{
+        //Timer setup
+        auto start = chrono::high_resolution_clock::now();
+
+        //Thread setup, each one calculating a collatz sequence
+        vector<thread> TH;
+        for(int i = 0; i < T; i++){
+            TH.emplace_back(createNonlockingThread, i);
+        }
+        for(auto& threads : TH){
+            threads.join();
+        }
+        
+        //timer end
+        auto end = chrono::high_resolution_clock::now();
+        secs = (end -start);
     }
     
-    //timer end
-    auto end = chrono::high_resolution_clock::now();
 
     //Transfers the histogram info to the histogram file
     for(int j = 0; j < 1000; j++){
@@ -85,8 +126,6 @@ string run_mt_collatz(int NVal, int TVal, bool lockedVal){
         }
     }
     histogramFile << "\n\n";
-
-    chrono::duration<double> secs = (end -start);
 
     //cout << "Threads counted / threads wanted: " << totalThreadNumber << " / " << N << endl;
     std::cerr << N << ", " << T << ", " << fixed << setprecision(9) << secs.count()+1 << endl;
@@ -107,6 +146,15 @@ int main(){
         cout << "In loop" << endl;
         for(int j = 0; j < 10; j++){
             myFile << run_mt_collatz(N_VALUE, i, true) << "\n";
+        }
+    }
+
+    myFile << "\n\n\n";
+
+    for(int i = 1; i <= MAX_T_VALUE; i++){
+        cout << "In loop" << endl;
+        for(int j = 0; j < 10; j++){
+            myFile << run_mt_collatz(N_VALUE, i, false) << "\n";
         }
     }
 
