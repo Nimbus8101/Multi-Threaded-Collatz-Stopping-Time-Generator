@@ -1,149 +1,102 @@
 #include <iostream>
-#include <mutex> 
+#include <mutex>
 #include <vector>
 #include <chrono>
 #include <cstring>
 #include <thread>
 #include <iomanip>
-#include <fstream>
+
 using namespace std;
 
 int N = 0;
 int T = 0;
-int counter = 0;
-mutex safe;
-bool locked = true;
-vector<int> histogram = vector<int>(10000, 0);
-ofstream histogramFile("histograms.csv");
+int counter = 1;
+mutex safe; 
+vector<int> histogram(1000, 0);
+bool useLock = true; 
 
-void createLockingThread(int threadnum){
+void createThread(int threadnum) {
     unsigned int variable;
-    int subI = 0;
-    while(counter < N){
-        if(subI > 0){
+    while (true) {
+        if (useLock) {
             safe.lock();
-                histogram.at(subI)++;
-                variable = counter + 1;
-                counter++;
+            if (counter > N) {
+                safe.unlock();
+                break; 
+            }
+            variable = counter;
+            counter++;
             safe.unlock();
-        }else{
-            safe.lock();
-                variable = counter + 1;
-                counter++;
-            safe.unlock();
-        }
-        if(variable > N){ return; } //Prevents excess collatz sequences from being calculated
-
-        subI = 0;
-        while(true){
-            if(variable == 1){
+        } else {
+            variable = counter;
+            if (variable > N) {
                 break;
             }
-            else if(variable % 2 == 0){
-                variable = variable / 2;
-                subI++;
-            }
-            else if(variable % 2 != 0){
-                variable = ((variable * 3) + 1);
-                subI++;
-            }
+            counter++;
         }
-    }
-    return;
-};
-
-void createNonlockingThread(int threadnum){
-    unsigned int variable;
-    while(counter < N){
-        variable = counter + 1;
-        counter++;
 
         int subI = 0;
-        while(true){
-            if(variable == 1){
+        while (variable != 1) {
+            if (variable % 2 == 0) {
+                variable /= 2;
+            } else {
+                variable = (variable * 3) + 1;
+            }
+            subI++;
+            if (subI >= histogram.size()) {
                 break;
             }
-            else if(variable % 2 == 0){
-                variable = variable / 2;
-                subI++;
+        }
+
+        if (subI < histogram.size()) {
+            if (useLock) {
+                safe.lock();
+                histogram[subI]++;
+                safe.unlock();
+            } else {
+                histogram[subI]++;
             }
-            else if(variable % 2 != 0){
-                variable = ((variable * 3) + 1);
-                subI++;
-            }
-        }
-        histogram.at(subI)++;
-    }
-    return;
-};
-
-string run_mt_collatz(int NVal, int TVal, bool lockedVal){
-    chrono::duration<double> secs;
-    locked = lockedVal;
-    N = NVal;
-    T = TVal;
-    
-    if(lockedVal){
-        //Timer setup
-        auto start = chrono::high_resolution_clock::now();
-
-        //Thread setup, each one calculating a collatz sequence
-        vector<thread> TH;
-        for(int i = 0; i < T; i++){
-            TH.emplace_back(createLockingThread, i);
-        }
-        for(auto& threads : TH){
-            threads.join();
-        }
-        
-        //timer end
-        auto end = chrono::high_resolution_clock::now();
-        secs = (end -start);
-    }else{
-        //Timer setup
-        auto start = chrono::high_resolution_clock::now();
-
-        //Thread setup, each one calculating a collatz sequence
-        vector<thread> TH;
-        for(int i = 0; i < T; i++){
-            TH.emplace_back(createNonlockingThread, i);
-        }
-        for(auto& threads : TH){
-            threads.join();
-        }
-        
-        //timer end
-        auto end = chrono::high_resolution_clock::now();
-        secs = (end -start);
-    }
-    
-
-    //Transfers the histogram info to the histogram file
-    for(int j = 0; j < 1000; j++){
-        if(histogram.at(j) != 0){
-            cout << endl << histogram.at(j) << ", frequency_of_stopping_time(" << j << ")";
         }
     }
-    histogramFile << "\n\n";
+}
 
-    //cout << "Threads counted / threads wanted: " << totalThreadNumber << " / " << N << endl;
-    std::cerr << endl << N << ", " << T << ", " << fixed << setprecision(9) << secs.count()+1 << endl;
-
-    //Returns the information as a string, to be used in a csv file
-    return to_string(N) + ", " + to_string(T) + ", " + to_string(secs.count()+1);
-};
-
-int main(int argc, char* argv[]){
-    bool locked;
-
-    if(argc >= 4 && strcmp(argv[3], "-nolock") == 0){
-        for(int j = 0; j < argc; j++){
-            cout << argv[j] << endl;
-        }
-    locked = false;
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        cerr << "Usage: " << argv[0] << " <N> <T> [-nolock]" << endl;
+        return 1;
     }
 
-    run_mt_collatz(stoi(argv[1]), stoi(argv[2]), locked);
+    if (argc == 4 && strcmp(argv[3], "-nolock") == 0) {
+        cout << "Running in no-lock mode" << endl;
+        useLock = false; 
+    }
 
+    N = stoi(argv[1]);
+    T = stoi(argv[2]);
+
+    auto start = chrono::high_resolution_clock::now();
+
+    vector<thread> TH;
+    for (int i = 0; i < T; i++) {
+        TH.emplace_back(createThread, i);
+    }
+    for (auto& threads : TH) {
+        threads.join();
+    }
+
+    int total = 0;
+    auto end = chrono::high_resolution_clock::now();
+    for (int j = 0; j < histogram.size(); j++) {
+        if (histogram[j] != 0) {
+            cout << endl << histogram[j] << " frequency_of_stopping_time(" << j << ")";
+            total = total + histogram[j];
+        }
+
+    }
+    cout << endl << "Total: " <<  total;
+    cout << endl;
+
+    chrono::duration<double> secs = (end - start);
+    cerr << N << ", " << T << ", " << fixed << setprecision(9) << secs.count() << endl;
     return 0;
 }

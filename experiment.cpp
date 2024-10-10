@@ -12,75 +12,59 @@ unsigned int N = 0;
 int T = 0;
 int counter = 0;
 mutex safe;
-bool locked = true;
+bool useLock = true;
 vector<int> histogram = vector<int>(10000, 0);
 
 ofstream histogramFile("histograms.csv");
 
-void createLockingThread(int threadnum){
+void createThread(int threadnum) {
     unsigned int variable;
-    int subI = 0;
-    while(counter < N){
-        if(subI > 0){
+    while (true) {
+        if (useLock) {
             safe.lock();
-                histogram.at(subI)++;
-                variable = counter + 1;
-                counter++;
+            if (counter > N) {
+                safe.unlock();
+                break; 
+            }
+            variable = counter;
+            counter++;
             safe.unlock();
-        }else{
-            safe.lock();
-                variable = counter + 1;
-                counter++;
-            safe.unlock();
-        }
-        if(variable > N){ return; } //Prevents excess collatz sequences from being calculated
-
-        subI = 0;
-        while(true){
-            if(variable == 1){
+        } else {
+            variable = counter;
+            if (variable > N) {
                 break;
             }
-            else if(variable % 2 == 0){
-                variable = variable / 2;
-                subI++;
-            }
-            else if(variable % 2 != 0){
-                variable = ((variable * 3) + 1);
-                subI++;
-            }
+            counter++;
         }
-    }
-    return;
-};
-
-void createNonlockingThread(int threadnum){
-    unsigned int variable;
-    while(counter < N){
-        variable = counter + 1;
-        counter++;
 
         int subI = 0;
-        while(true){
-            if(variable == 1){
+        while (variable != 1) {
+            if (variable % 2 == 0) {
+                variable /= 2;
+            } else {
+                variable = (variable * 3) + 1;
+            }
+            subI++;
+            if (subI >= histogram.size()) {
                 break;
             }
-            else if(variable % 2 == 0){
-                variable = variable / 2;
-                subI++;
-            }
-            else if(variable % 2 != 0){
-                variable = ((variable * 3) + 1);
-                subI++;
+        }
+
+        if (subI < histogram.size()) {
+            if (useLock) {
+                safe.lock();
+                histogram[subI]++;
+                safe.unlock();
+            } else {
+                histogram[subI]++;
             }
         }
-        histogram.at(subI)++;
     }
-    return;
-};
+}
 
 string run_mt_collatz(int NVal, int TVal, bool lockedVal){
     chrono::duration<double> secs;
-    locked = lockedVal;
+    useLock = lockedVal;
     N = NVal;
     T = TVal;
     
@@ -91,7 +75,7 @@ string run_mt_collatz(int NVal, int TVal, bool lockedVal){
         //Thread setup, each one calculating a collatz sequence
         vector<thread> TH;
         for(int i = 0; i < T; i++){
-            TH.emplace_back(createLockingThread, i);
+            TH.emplace_back(createThread, i);
         }
         for(auto& threads : TH){
             threads.join();
@@ -107,7 +91,7 @@ string run_mt_collatz(int NVal, int TVal, bool lockedVal){
         //Thread setup, each one calculating a collatz sequence
         vector<thread> TH;
         for(int i = 0; i < T; i++){
-            TH.emplace_back(createNonlockingThread, i);
+            TH.emplace_back(createThread, i);
         }
         for(auto& threads : TH){
             threads.join();
@@ -122,6 +106,7 @@ string run_mt_collatz(int NVal, int TVal, bool lockedVal){
     //Transfers the histogram info to the histogram file
     for(int j = 0; j < 1000; j++){
         if(histogram.at(j) != 0){
+            histogramFile << histogram.at(j) << "," << j << "\n";
             cout << endl << histogram.at(j) << ", frequency_of_stopping_time(" << j << ")";
         }
     }
@@ -136,7 +121,7 @@ string run_mt_collatz(int NVal, int TVal, bool lockedVal){
 
 
 int main(){
-    int N_VALUE = 20000000;
+    int N_VALUE = 6678923;
     int MAX_T_VALUE = 8;
     //Run the collatz experiment with T values 1-8 (N = 10000)
 
